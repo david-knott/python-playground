@@ -4,7 +4,8 @@
 # array slice https://stackoverflow.com/questions/509211/understanding-slice-notation
 # https://www.rapidtables.com/convert/number/hex-to-decimal.html
 # https://www.programiz.com/python-programming/online-compiler/
-
+# https://docs.python.org/3/library/stdtypes.html#bytes
+# https://github.com/hardbyte/python-can/blob/faed6e9cef02b427d386515c2d12cebb72a5717d/examples/receive_all.py
 # data = b'\xff\x00\xff\x00\xff\x00'
 # data = bytearray([0x7f,0x7f,0x7c,0xd7,0x13,0x0a,0x55,0xc3])
 # print_message(data)
