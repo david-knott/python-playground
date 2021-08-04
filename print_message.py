@@ -6,16 +6,16 @@
 # https://www.programiz.com/python-programming/online-compiler/
 # https://docs.python.org/3/library/stdtypes.html#bytes
 # https://github.com/hardbyte/python-can/blob/faed6e9cef02b427d386515c2d12cebb72a5717d/examples/receive_all.py
-# data = b'\xff\x00\xff\x00\xff\x00'
-# data = bytearray([0x7f,0x7f,0x7c,0xd7,0x13,0x0a,0x55,0xc3])
-# print_message(data)
+# https://python-can.readthedocs.io/en/master/message.html
 
-
-
-from __future__ import print_function
+# not needed in python3
+# from __future__ import print_function
 
 import can
+
+# not used
 # from can.bus import BusState
+
 
 def print_message(test):
     """prints out canbus message values"""
@@ -25,6 +25,9 @@ def print_message(test):
     sodec = int.from_bytes(test[6:7], byteorder='big')
     print('hv =', hcvdec * 0.0001, 'lv =', lcvdec * 0.0001, 'pv =', pvdec* 0.01, 'so =', sodec* 0.5)
 
+# data = b'\xff\x00\xff\x00\xff\x00'
+# data = bytearray([0x7f,0x7f,0x7c,0xd7,0x13,0x0a,0x55,0xc3])
+# print_message(data)
     
 def receive_all():
     bus = can.interface.Bus(channel='can0', bustype='socketcan_native')
