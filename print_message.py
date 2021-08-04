@@ -1,5 +1,7 @@
 # use slice and int.from_bytes to extract data from message
 # array slice https://stackoverflow.com/questions/509211/understanding-slice-notation
+# https://www.rapidtables.com/convert/number/hex-to-decimal.html
+# https://www.programiz.com/python-programming/online-compiler/
 
 def print_message(test):
     """prints out canbus message values"""
