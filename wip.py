@@ -115,6 +115,7 @@ class BatteryBalancer:
         self.thread.join();
         
 # Mains charger class that runs inside its own thread.
+# Business logic for this needs to be fleshed out a bit more.
 class ForceMainsCharge:
 
     def __init__(self, canBusService, batteryCellHealth, batteryPackCharge, relayState, weatherService, dateProvider):
@@ -137,6 +138,11 @@ class ForceMainsCharge:
                     if not self.weatherService.tomorrow_sunny() and not self.batteryPackCharge.is_okay():
                         print('charging battery')
                         self.relayState.on()
+			# sleep for an hour so this branch isn't hit again.
+			timer.sleep(3600)
+	    # sleep for an hour between checks
+	    timer.sleep(3600) 
+
                 
     def start(self):
         self.stop_thread = False;
