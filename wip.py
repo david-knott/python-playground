@@ -127,15 +127,15 @@ class ForceMainsCharge:
         self.canBusService = canBusService
 
     def midnight(self, stop):
-	if self.batteryCellHealth.is_okay():
-	#   print('checking pack voltage', self.dateProvider.now())
-	# if tomorrow is sunny, no need to mains charge the battter
-	# if tomorrow is cloudy, charge battery using night cheap electricity
-	if not self.weatherService.tomorrow_sunny() and not self.batteryPackCharge.is_okay():
-		print('charging battery')
-		self.relayState.on()
-	# start a new timer for tomorrow.
-	self.start()
+    	if self.batteryCellHealth.is_okay():
+    	#   print('checking pack voltage', self.dateProvider.now())
+    	# if tomorrow is sunny, no need to mains charge the battter
+    	# if tomorrow is cloudy, charge battery using night cheap electricity
+            if not self.weatherService.tomorrow_sunny() and not self.batteryPackCharge.is_okay():
+                print('charging battery')
+                self.relayState.on()
+    	# start a new timer for tomorrow.
+    	self.start()
 
     def get_delta(self, datetime):
     	x = datetime.today()
@@ -144,10 +144,12 @@ class ForceMainsCharge:
     	return delta_t.total_seconds()
     
     def start(self):
-    	secs = self.get_delta(self.date_provider)
-    	t = Timer(secs, self.midnight)
+    	secs = self.get_delta(self.dateProvider)
+    	t = threading.Timer(secs, self.midnight)
     	t.start()
-
+    
+    def stop(self):
+        pass
         
 # Main method
 if __name__ == "__main__":
@@ -159,6 +161,6 @@ if __name__ == "__main__":
     fmc = ForceMainsCharge(cbs, bs, bpc, rs, WeatherService, datetime)
     bb.start()
     fmc.start()
-    bb.stop()
-    fmc.stop()
+   # bb.stop()
+   # fmc.stop()
     
