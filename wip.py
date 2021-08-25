@@ -3,7 +3,7 @@
 
 from enum import Enum
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 import logging
 import threading
@@ -126,34 +126,28 @@ class ForceMainsCharge:
         self.dateProvider = dateProvider
         self.canBusService = canBusService
 
-    def run(self, stop):
-        while True:
-            if stop():
-                break
-            if self.dateProvider.now().strftime("%H") == "00": 
-                if self.batteryCellHealth.is_okay():
-                 #   print('checking pack voltage', self.dateProvider.now())
-                    # if tomorrow is sunny, no need to mains charge the battter
-                    # if tomorrow is cloudy, charge battery using night cheap electricity
-                    if not self.weatherService.tomorrow_sunny() and not self.batteryPackCharge.is_okay():
-                        print('charging battery')
-                        self.relayState.on()
-			# sleep for an hour so this branch isn't hit again.
-			timer.sleep(3600)
-	    # sleep for an hour between checks
-	    timer.sleep(3600) 
+    def midnight(self, stop):
+	if self.batteryCellHealth.is_okay():
+	#   print('checking pack voltage', self.dateProvider.now())
+	# if tomorrow is sunny, no need to mains charge the battter
+	# if tomorrow is cloudy, charge battery using night cheap electricity
+	if not self.weatherService.tomorrow_sunny() and not self.batteryPackCharge.is_okay():
+		print('charging battery')
+		self.relayState.on()
+	# start a new timer for tomorrow.
+	self.start()
 
-                
+    def get_delta(self, datetime):
+    	x = datetime.today()
+    	y = x.replace(day=x.day, hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    	delta_t = y-x
+    	return delta_t.total_seconds()
+    
     def start(self):
-        self.stop_thread = False;
-        print('starting force mains charger')
-        self.thread = threading.Thread(target=self.run,args=(lambda: self.stop_thread,));
-        self.thread.start();
+    	secs = self.get_delta(self.date_provider)
+    	t = Timer(secs, self.midnight)
+    	t.start()
 
-    def stop(self):
-        print('stopping force mains charger')
-        self.stop_thread = True;
-        self.thread.join();
         
 # Main method
 if __name__ == "__main__":
