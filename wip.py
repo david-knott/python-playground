@@ -1,6 +1,8 @@
 # https://www.online-python.com/
 # https://stackoverflow.com/questions/4142151/how-to-import-the-class-within-the-same-directory-or-sub-directory
 
+import can
+import RPi.GPIO as GPIO
 from enum import Enum
 import time
 from datetime import datetime, timedelta
@@ -8,21 +10,24 @@ import requests
 import logging
 import threading
 
+logging.basicConfig(filename='montini.log', format='%(asctime)s %(levelname)s:%(message)s', level=logging.DEBUG)
+
 # encapsulates data retrieved from the can bus. 
 class CanBusData:
-    def __init__(self, hcvdec, lcvdec, pvdec, sodec):
+    def __init__(self, hcvdec, lcvdec, pvdec, sodec, arbitration_id):
         self.hcvdec = hcvdec
         self.lcvdec = lcvdec
         self.pvdec = pvdec
         self.sodec = sodec
+        self.arbitration_id = arbitration_id
     
     @classmethod
-    def from_bytearray(cls, test):
+    def from_bytearray(cls, test, arbitration_id):
         hc = int.from_bytes(test[0:2], byteorder='big') * 0.0001
         lc = int.from_bytes(test[2:4], byteorder='big') * 0.0001
         pv = int.from_bytes(test[4:6], byteorder='big') * 0.01
         so = int.from_bytes(test[6:7], byteorder='big') * 0.5
-        return cls(hc, lc, pv, so)
+        return cls(hc, lc, pv, so, arbitration_id)
     
     def to_bytearray():
         hva = (int)(self.hvvdec / 0.0001).to_bytes(2, 'big')
@@ -39,12 +44,30 @@ class CanBusService:
 
 # Service that uses a pyhsical or virtual can bus
 class CanBusServiceImpl(CanBusService):
-    pass
+
+    def __init__(self):
+        #self.bus = can.interface.Bus(channel='can0', bustype='socketcan_native')
+        self.bus = can.ThreadSafeBus(channel='can0', bustype='socketcan_native')
+        self.last_message = None
+
+    def get_message(self):
+        while True:
+            msg = self.bus.recv(1)
+            if msg is not None and msg.arbitration_id == 1537:
+                return CanBusData.from_bytearray(msg.data, msg.arbitration_id )
+
+        return None
 
 # Stores the state of the battery health
 class BatteryCellHealth:
-    States = Enum('States', 'Over Under Ok')
+    States = Enum('States', 'Nok Ok')
     state = States.Ok
+
+    def ok():
+        self.state = States.Ok
+    
+    def nok():
+        self.state = States.Nok
     
     def is_okay(self):
 	    return self.state == self.States.Ok
@@ -74,15 +97,55 @@ class RelayState:
     def is_on(self):
         return self.state == self.States.On
 
+# gpio setup
+GPIO.setwarnings(False)
+GPIO.setmode(GPIO.BCM)
+switchon = 23
+GPIO.setup(switchon, GPIO.OUT)
+GPIO.output(switchon, False)
+
+
 # Class that interacts with the GPIO pins of the rpi.
 class RelayStateImpl(RelayState):
-    pass
+
+    def __init__(self):
+        GPIO.setwarnings(False)
+        GPIO.setmode(GPIO.BCM)
+        switchon = 23
+        GPIO.setup(switchon, GPIO.OUT)
+        GPIO.output(switchon, False)
+
+    def on(self):
+        self.state = self.States.On
+        GPIO.output(switchon, True)
+        
+    def off(self):
+        self.state = self.States.Off
+        GPIO.output(switchon, False)
+        
+    def is_off(self):
+        return self.state == self.States.Off
+        
+    def is_on(self):
+        return self.state == self.States.On
+
 
 # Base class that all weather services should extend
 class WeatherService:
     
     def tomorrow_sunny():
         return False
+
+class WeatherServiceImpl(WeatherService):
+    
+    def tomorrow_sunny():
+        dublin = requests.get('http://api.openweathermap.org/data/2.5/onecall?lat=53.349722&lon=-6.260278&exclude=alerts,minutely,hourly,current&appid=489d0ec288c646a028285da15ab17895')
+        today_uvi = dublin.json()['daily'][0]['uvi']
+        today_clouds = dublin.json()['daily'][0]['clouds']
+        sunshinetoday = ((today_uvi * 10) + (100 - today_clouds))/2
+        logging.info(f'UVI = {today_uvi} Clouds = {today_clouds} Sunshine Today = {sunshinetoday}')
+        return sunshinetoday >= 50
+
 
 # Batter balancer class that runs inside its own thread.
 class BatteryBalancer:
@@ -96,21 +159,28 @@ class BatteryBalancer:
         while True:
             if stop():
                 break
-           # print('balancing bs= ', self.batteryCellHealth.state, ', rs=', self.relayState.state)
+            logging.info('balancing battery cell health = %s relay state = %s', self.batteryCellHealth.state, self.relayState.state)
             can_bus_data = self.canBusService.get_message()
-            if can_bus_data.lcvdec < 2.7 and self.relayState.is_off():
-                self.relayState.on()
-            if can_bus_data.hcvdec > 3.7 and self.relayState.is_on():
-                self.relayState.off()
+            logging.info('lv:%s hv:%s soc:%s', can_bus_data.lcvdec, can_bus_data.hcvdec, can_bus_data.sodec)
+            if can_bus_data is not None :
+                if can_bus_data.lcvdec < 2.7 and self.relayState.is_off():
+                    self.batteryCellHealth.nok()
+                    logging.info('starting balancing battery ', can_bus_data.lcvdec, can_bus_data.hcvdec)
+                    self.relayState.on()
+                if ( can_bus_data.hcvdec > 3.7 or can_bus_data.lcvdec > 3.2 ) and self.relayState.is_on():
+                    logging.info('finished balancing battery ', can_bus_data.lcvdec, can_bus_data.hcvdec)
+                    self.batteryCellHealth.ok()
+                    self.relayState.off()
+                time.sleep(30)
            
     def start(self):
         self.stop_thread = False;
-        print('starting battery balancer')
+        logging.info('starting battery balancer')
         self.thread = threading.Thread(target=self.balance_battery_pack,args=(lambda: self.stop_thread,));
         self.thread.start();
 
     def stop(self):
-        print('stopping battery balancer')
+        logging.info('stopping battery balancer')
         self.stop_thread = True;
         self.thread.join();
         
@@ -126,22 +196,27 @@ class ForceMainsCharge:
         self.dateProvider = dateProvider
         self.canBusService = canBusService
 
-    def midnight(self, stop):
-    	if self.batteryCellHealth.is_okay():
-    	#   print('checking pack voltage', self.dateProvider.now())
-    	# if tomorrow is sunny, no need to mains charge the battter
-    	# if tomorrow is cloudy, charge battery using night cheap electricity
-            if not self.weatherService.tomorrow_sunny() and not self.batteryPackCharge.is_okay():
-                print('charging battery')
+    def midnight(self):
+        if self.batteryCellHealth.is_okay():
+            message = self.canBusService.get_message()
+            logging.info('checking pack voltage')
+            if message.sodec < 50 and not self.weatherService.tomorrow_sunny() and self.relayState.is_off():
+                logging.info('charging battery')
                 self.relayState.on()
-    	# start a new timer for tomorrow.
-    	self.start()
+            if message.sodec >= 80 and self.relayState.is_on():
+                logging.info('stopping charge')
+                self.relayState.off()
+
+        # start a new timer for tomorrow.
+        logging.info('start new timer')
+        self.start()
 
     def get_delta(self, datetime):
-    	x = datetime.today()
-    	y = x.replace(day=x.day, hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-    	delta_t = y-x
-    	return delta_t.total_seconds()
+        x = datetime.today()
+        y = x.replace(day=x.day, hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        delta_t = y-x
+        logging.info('next run at delta %s', delta_t.total_seconds())
+        return delta_t.total_seconds()
     
     def start(self):
     	secs = self.get_delta(self.dateProvider)
@@ -158,6 +233,8 @@ if __name__ == "__main__":
     bs = BatteryCellHealth()
     bpc = BatteryPackCharge()
     bb = BatteryBalancer(cbs, bs, rs)
+    weatherService = WeatherServiceImpl
+    print(weatherService.tomorrow_sunny())
     fmc = ForceMainsCharge(cbs, bs, bpc, rs, WeatherService, datetime)
     bb.start()
     fmc.start()
